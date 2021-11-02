@@ -19,14 +19,21 @@ tidy=TRUE, tidy.opts=list(width.cutoff=60), R.options=list(max.print=100))
 
 ## Data Wrangling, Exploration, Visualization
 
-### Name and EID here
+### Quincy Smith (qrs227)
 
 #### Introduction 
 
-Paragraph or two introducing your datasets and variables, why they are interesting to you, etc.
+For this project, I decided to use data from the NBA in the 2019-2020 and 2020-2021 seasons. Basketball has always been my favorite sport and I played basketball from since I could walk to the end of high school. Basketball is something that I am very passionate about and one day I want to work with sports data, specifically basketball data, for a living. 
 
+The NBA data that I found comes from the two seasons that I had previously mentioned. The data contains measurements of every individual player that played at least one regular season game during their respective season. It has common variables such as games, points, assists, and rebounds as well as some more advanced metrics such as field goal percentage, free throw percentage, and effective field goal percentage. All these different measures are used to judge how effective a player is while competing in an NBA game and they can be manipulated to account for different styles of play.
 ```{R}
 # read your datasets in here, e.g., with read_csv()
+library(tidyverse)
+library(gt)
+library(ggplot2)
+library(kableExtra)
+s20_21 <- read_csv("IndvStats.csv")
+s19_20 <- read_csv("LastYearStats.csv")
 
 ```
 
@@ -35,52 +42,146 @@ Paragraph or two introducing your datasets and variables, why they are interesti
 If your datasets are tidy already, demonstrate that you can reshape data with pivot wider/longer here (e.g., untidy and then retidy). Alternatively, it may be easier to wait until the wrangling section so you can reshape your summary statistics. Note here if you are going to do this.
 
 ```{R}
-# your tidying code (if applicable; can also wait until wrangling section)
+s19_20 %>% pivot_wider(names_from = Player, values_from = Age) -> temp
+temp %>% head(10)
+temp %>% pivot_longer(60:489, names_to = "Player", values_to = "Age") %>% 
+  filter(is.na(Age) == F) -> temp
+temp %>% head(10)
 ```
-
+Since the data was already tidy, this is a demonstration of using the pivot_longer and pivot_wider functions. In the first step, the data is pivoted wider based on player name and player age. This created a column for every player with their age was its respective position. Then the data was pivoted longer about the columns that had player names and stored the values under the age variable. Yet, because of the pivot wider, every player had "NA" when the age was not in the respective spot so the NAs had to be filtered out.
     
 #### Joining/Merging
 
 ```{R}
-# your joining code
 
-# your joining code
+s19_21 <- inner_join(s19_20, s20_21, by = "Player")
+
+names(s19_21) %>% str_replace_all(".x", ".19_20") %>% str_replace_all("[^%[:^punct:]]y", ".20_21") -> names(s19_21)
+
+s19_21 %>% rename("TEPer.20_21" = "3P%.20_21", "TEPer.19_20" = "3P%.19_20", "TWPer.20_21" = "2P%.20_21", "TWPer.19_20" = "2P%.19_20", "TEA.20_21" = "3PA.20_21", "TEA.19_20" = "3PA.19_20", "TE.20_21" = "3P.20_21", "TE.19_20" = "3P.19_20", "TWA.20_21" = "2PA.20_21", "TWA.19_20" = "2PA.19_20", "TW.20_21" = "2P.20_21", "TW.19_20" = "2P.19_20" ) -> s19_21
+
+s19_21 %>% n_distinct("Player")
+
+s19_20 %>% n_distinct("Player")
+
+s20_21 %>% n_distinct("Player")
+
+s19_20 %>% summarize(count = n())
+
+s20_21 %>% summarize(count = n())
+
+s19_20 %>% anti_join(s20_21, by = "Player") %>% n_distinct("Player")
+
+s20_21 %>% anti_join(s19_20, by = "Player") %>% n_distinct("Player")
+
+s19_21 %>% na_if(0) -> s19_21
+
 ```
 
-Discussions of joining here. Feel encouraged to break up into more than once code chunk and discuss each in turn.
+When joining the two dataframes, it was best to join by Player name as since it is considered the "ID" variable. Inner_join was used to make sure that each player in the joined dataframe appeared in at least one game of the NBA season. This resulted in in a joined dataframe of 430 players,losing 99 plauyers from the 2019-2020 seaon and 110 players from the 2020-2021 season. This may overestimate the statistics of the NBA since players that were not carried over are rookies, retirees, or other players that would be considered of low skill. Most variables had to be renamed in order to make a distinction between the two seasons and follow the R syntax. 
 
 ####  Wrangling
 
 ```{R}
-# your wrangling code
 
-# your wrangling code
 
-# your wrangling code
+# per game function
+per_game <- function(x, games) {
+  round(x/games, digits = 1)
+}
+s19_21 %>% mutate(PPG.19_20 = per_game(PTS.19_20, G.19_20)) %>% 
+  mutate(PPG.20_21 = per_game(PTS.20_21, G.20_21)) %>% 
+  select(Player, PPG.19_20, PPG.20_21) %>% head(10)
+# adding points per game to the dataframe
+s19_21 %>% mutate(PPG.19_20 = per_game(PTS.19_20, G.19_20)) %>% 
+  mutate(PPG.20_21 = per_game(PTS.20_21, G.20_21)) -> s19_21
+
+#Summarizing points per game, rebounds per game, and steals per game for the LA teams
+s19_21  %>% filter(str_detect(Tm.19_20, "LA.") | str_detect(Tm.20_21, "LA.")) %>% 
+  group_by(Tm.20_21) %>% 
+  summarize(Tm_PPG = round((sum(PTS.20_21) + sum(PTS.19_20))/144, 1), Tm_TRB = round((sum(TRB.20_21) + sum(TRB.19_20))/144, 1), Tm_STL = round((sum(STL.20_21) + sum(STL.19_20))/144, 1), count = n()) %>%
+  filter(str_detect(Tm.20_21, "LA."))
+
+# calculating the proportion of games played by players who are 25 years old and younger
+s19_21 %>% filter(Age.20_21 < 26 & Age.19_20 <= 25) %>% group_by(Player, Age.20_21) %>%
+  summarize(prop_G = round(sum(G.19_20 + G.20_21)/145, 2)) %>% arrange(desc(prop_G)) %>% head(6)
+
+# Finding the average proportion of games played by given age group for players 25 and younger
+s19_21 %>% filter(Age.20_21 < 26 & Age.19_20 <= 25) %>% group_by(Player, Age.20_21) %>%
+  summarize(prop_G = sum(G.19_20 + G.20_21)/145) %>% group_by(Age.20_21) %>% 
+  summarize(avg_prop_G = round(mean(prop_G), 3), sd_prop_G = round(sd(prop_G), 3), count = n()) %>%
+  gt() %>% tab_header(title = "Proportion of Games Played", subtitle = "For players under 25") 
+  
+
+east_teams <- c("BRK", "MIA", "CHO", "NYK", "ORL", "MIL", "TOR", "CHI", "WAS", "PHI", "BOS", "ATL", "CLE", "IND", "DET")
+
+# adding conference variable to the dataframe
+s19_21 %>% mutate(Conf.19_20 = Tm.19_20%in%east_teams) %>% 
+  mutate(Conf.20_21 = Tm.20_21%in%east_teams) %>% 
+  mutate(Conf.19_20 = as.character(Conf.19_20)) %>%
+  mutate(Conf.20_21 = as.character(Conf.20_21)) %>% 
+  mutate(Conf.19_20 = str_replace_all(Conf.19_20, "FALSE", "WEST"), Conf.19_20 = str_replace_all(Conf.19_20, "TRUE", "EAST")) %>% 
+  mutate(Conf.20_21 = str_replace_all(Conf.20_21, "FALSE", "WEST"), Conf.20_21 = str_replace_all(Conf.20_21, "TRUE", "EAST")) -> s19_21
+
+# finding the average assists per game by given position in a respective conference.
+s19_21 %>% filter(Conf.19_20 == Conf.20_21, Pos.19_20 == Pos.20_21) %>% 
+  group_by(Conf.20_21, Pos.20_21) %>% 
+  summarize(APG.19_20 = per_game(AST.19_20, G.19_20), APG.20_21 = per_game(AST.20_21, G.20_21)) %>%
+  summarize(pos_APG.19_20 = round(median(APG.19_20, na.rm = T),1), pos_APG.20_21 = round(median(APG.20_21, na.rm = T),1), count = n()) %>%
+  arrange(desc(pos_APG.19_20))
+
+#Find the average PPG of players with above average steals
+s19_21 %>% filter(STL.20_21 > median(STL.20_21, na.rm = T) & STL.19_20 > median(STL.19_20, na.rm = T)) %>% 
+  summarize(avg_PPG.19_20 = round(mean(PPG.19_20),1), avg_PPG.20_21 = round(mean(PPG.20_21),1), count = n())
+s19_21 %>% summarize(avg_PPG.19_20=round(mean(PPG.19_20, na.rm =T),1),avg_PPG.20_21 = round(mean(PPG.20_21, na.rm = T),1),)
 ```
+During wrangling, there were a few additions to the dataframe that were made to make wrangling just a bit easier. Variables for points per game and conference were added for each of the respective seasons in order to better understand the data. The "per game" function was written in order to compensate for games that players may have missed due to injuries, coach's decisions, or personal reasons. This function allowed for the accurate calculation of averages for each player given that they played different games. The first interesting finding when wrangling the data was the much greater Western Conference players were at sharing the basketball. When breaking down the assists per game for each position and dividing them by conference, the position groups in the Western conference consistently had more assist/game than their counter parts in the Eastern conference. Not only were they ahead more often, but they also had larger gaps, for example Western PGs were +1.2 assist/game over Eastern PGs while and Eastern PFs were only +0.6 assists/game over Western PFs. This speaks on the different skill levels of the two conferences as the Western players are more willing to give the ball to their teammates which displays trust in their teammates' skill and ability to score. 
 
-Your discussion of wrangling section here. Feel encouraged to break up into more than once code chunk and discuss each in turn.
+The second interesting find was the proportion of games played by younger guys in the league. When looking at the "younger" players, the data was filtered to players who were less than 26 years old in both seasons. Surprisingly, the youngest age group, 20 years old, did not play the least proportion of games but they did have the greatest variability in games played. The proportion of games played may be attributed to the attempted development of young players while the variability can be attributed to the skill level of said player. Yet, it was also intriguing how the 23 year olds seemed to play the least out of any age group. The 23 year old mark is often the age when players sign their second contract, so it could be possible that many of these players had to become acclimated to a new basketball system which meant they were forced to sit out of games via coach's decision.
 
 
 #### Visualizing
 
 ```{R}
-# your plot 1
+plot1 <- ggplot(data = s19_21, aes(x = STL.20_21, y = TEPer.20_21)) + 
+  geom_point(aes(color = Pos.20_21)) + geom_smooth(method = "lm", color = "black") +
+  scale_x_continuous(name = "Total Steals", n.breaks = 10) + 
+  scale_y_continuous(name = "3 Point Percentage", n.breaks = 5) + 
+  ggtitle("Total Steals vs. 3PT Percentage") + 
+  scale_color_discrete("Position") + theme(panel.background = element_rect("gray")) 
+plot1
 ```
 
-Your discussion of plot 1
+This plot was to help visualize if their is a real correlation between 3PT shooting and defensive abilities. In the realm of the NBA, "3 and D" players are considered valuable since the have such a large impact on both sides of the ball. But when looking at the graph, the trend line does not increase very strongly as most of the points are clustered around a similar 3PT percentage. This suggests that these two variables are pretty unrelated and that "3 and D" players could be coming a thing of the past with most of the league being able to shoot threes. Further more, the points are broken down by position in order to help single out the outliers. Almost all of the outliers (those who shot either 100% or 0%) are NBA bigmen so it is very likely they took a very small amount of 3PT shots. Thus their large impact on the plot should be ignored as they do not have a large impact in the 3 point shooting category.
 
 ```{R}
-# your plot 2
+plot2 <- ggplot(data = s19_21) + 
+  geom_histogram(aes(x = PTS.20_21, y = ..density..), fill = "purple", color = "black")+
+  geom_density(aes(x = PTS.19_20), color = "red") + 
+  scale_x_continuous(name = "Total Points", breaks = seq(0,2500,250)) +
+  ggtitle("Point Distribution in the NBA Regular Season") +
+  scale_y_continuous(n.breaks = 7, name = "Density") +
+  theme(panel.background = element_rect("gray"), plot.background = element_rect("gray"))
+
+plot2
 ```
 
-Your discussion of plot 2
+This plot demonstrates the point distribution among NBA players from both seasons. From this plot, it appears that from 2019-2020 to 2020-2021, the point distribution remaind the same as the density curve follows the skew of the histogram. With that being said, there still is a small amount more of NBA players that scored less than 125 points in the 2020-2021 season than there was in the 2019-2020 season. Yet, this was complimented by a few players in the 2020-2021 season scoring more than players in the 2019-2020 season. This may suggest that the difference between super star scorers and average NBA players is starting to increase which would increase the value of those players that specialize in scoring the basketball.
 
 ```{R}
-# your plot 3
+plot3 <- ggplot(data = s19_21, aes(x = Tm.20_21, y = TRB.20_21)) + 
+  geom_bar(stat="summary",fun=mean, aes(fill = Tm.20_21)) + 
+  geom_errorbar(stat="summary", fun.data=mean_cl_normal) + 
+  scale_y_continuous(name = "Mean Rebounds per Player") +
+  theme(axis.text.x = element_blank()) +
+  scale_x_discrete(name = "Team") +
+  scale_color_discrete("Team")+
+  ggtitle("Average Rebound per Player")
+  
+plot3
 ```
 
-Your discussion of plot 3
+When looking at the graph and taking into account the results of the NBA seasons, it is clear that the teams that rebound better often preform better. For example, the 2020-2021 Champion Milwaukee Bucks have the highest average rebounds per player in the league. Their great success can partially be attributed to this high rebound rate. The standard error bars provide reasoning to the exception of this trend as the second place Phoenix Suns were nearly last in rebounding, yet the made it all the way to the NBA finals. However, the importance of rebounding must have played a factor as the fell to the Bucks. Furthermore, a team like the Atlanta Hawks sat in mediocrity in rebounding numbers, but their rebounding numbers from individual players allowed them to overcome some adversity, yet they still ultimately fell.
 
 #### Concluding Remarks
 
